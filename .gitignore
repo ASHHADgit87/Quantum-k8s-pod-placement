@@ -1,0 +1,13 @@
+quantum_env/
+__pycache__/
+*.pyc
+.pytest_cache/
+kubeconfig
+*.kubeconfig
+.kube/
+results/*.json
+manifests/test-pods*.yaml
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

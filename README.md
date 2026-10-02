@@ -1,5 +1,5 @@
 # Quantum-Assisted Kubernetes Pod Placement — Master Build Roadmap
-**CS-351 Computer Communication Networks · Fall 2026 · Group GB13 · Ashhadullah (SE-24087) & Misbah (SE-24096)**
+
 
 This is the terminal-to-terminal build plan for the system itself — nothing else. No research-paper phase, no LaTeX, no filler. Every command below is either a Kali WSL2 command, an Ubuntu command, a `git`/`gh` command, or a command that's identical on both machines, and every phase says explicitly, up front, whose job it is.
 

@@ -36,11 +36,8 @@ from src.workload import (
 DEFAULT_OUTPUT_DIR = Path("manifests")
 DEFAULT_MANIFEST = "test-pods.yaml"
 QUANTUM_MANIFEST = "test-pods-quantum.yaml"
-# Does no work, so the pods only reserve their requests. Already on every
-# k3s node (it is the sandbox image), so nothing is pulled.
 POD_IMAGE = "rancher/mirrored-pause:3.6"
 PERCENT = 100
-# Below this a small pod's share would round down to a request of zero.
 MIN_BUDGET_CPU_M = 100
 MIN_BUDGET_MEMORY_BYTES = 100 * MEBIBYTE
 
@@ -53,7 +50,6 @@ class PerNodeBudget:
     memory_bytes: int
 
 
-# Used with --offline: a stand-in worker of 4 CPU / 8 GiB.
 OFFLINE_BUDGET = PerNodeBudget(cpu_m=4000, memory_bytes=8 * 1024**3)
 
 
@@ -163,7 +159,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         budget = OFFLINE_BUDGET if args.offline else _live_budget(args.context)
-    except ValueError as exc:  # cluster answered, but cannot host the workload
+    except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:

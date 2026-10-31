@@ -33,7 +33,7 @@ def core_api() -> client.CoreV1Api:
         config.load_kube_config(context=CLUSTER_CONTEXT)
         api = client.CoreV1Api()
         api.list_node(_request_timeout=API_TIMEOUT_SECONDS)
-    except Exception as exc:  # no kubeconfig, no such context, cluster stopped
+    except Exception as exc:
         pytest.skip(f"k3d cluster {CLUSTER_CONTEXT} is not reachable: {exc}")
     return api
 

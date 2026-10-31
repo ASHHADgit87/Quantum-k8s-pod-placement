@@ -36,21 +36,16 @@ CLUSTER_CONTEXT = "k3d-quantum-cluster"
 ALIAS_LABEL = "cep-alias"
 KUBELET_STATS_PATH = "stats/summary"
 FINISHED_PHASES = frozenset({"Succeeded", "Failed"})
-# Taint effects that stop kube-scheduler from placing an ordinary pod on a node.
 BLOCKING_TAINT_EFFECTS = frozenset({"NoSchedule", "NoExecute"})
 MEBIBYTE = 1024**2
 
 MILLICORES_PER_CORE = 1000
-# The numeric part of a quantity: plain ASCII decimal, optional exponent.
 _NUMBER = re.compile(r"(\d+(?:\.\d*)?|\.\d+)([eE][+-]?\d+)?", re.ASCII)
-# Suffix -> multiplier that turns the number into millicores.
 _CPU_SUFFIXES = {
     "n": Fraction(1, 1_000_000),
     "u": Fraction(1, 1_000),
     "m": Fraction(1),
 }
-# Suffix -> multiplier that turns the number into bytes. Two-letter binary
-# suffixes are matched before the one-letter decimal ones.
 _MEMORY_SUFFIXES = {
     "Ki": Fraction(1024),
     "Mi": Fraction(1024**2),
@@ -106,9 +101,8 @@ class WorkloadPod:
     name: str
     cpu_m: int
     memory_bytes: int
-    node_name: str | None  # None while the pod is still Pending
+    node_name: str | None
     scheduler_name: str | None
-    # Read-only mapping; left out of the hash so instances stay hashable.
     traffic_mbps: Mapping[str, int] = field(hash=False)
 
 
@@ -287,8 +281,6 @@ def read_workload_pods(
 
 
 def _read_one_node_counters(api: client.CoreV1Api, node_name: str) -> NetworkCounters:
-    # _preload_content=False: the client would otherwise turn the JSON body
-    # into a Python-repr string that json.loads cannot read back.
     response = api.connect_get_node_proxy_with_path(
         node_name, KUBELET_STATS_PATH, _preload_content=False
     )
@@ -308,7 +300,7 @@ def read_network_counters(
     for node_name in node_names:
         try:
             counters.append(_read_one_node_counters(api, node_name))
-        except Exception as exc:  # best-effort: any kubelet/proxy failure
+        except Exception as exc:
             logger.warning("no network counters for node %s: %s", node_name, exc)
     return tuple(counters)
 

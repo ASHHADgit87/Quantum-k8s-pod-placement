@@ -14,8 +14,6 @@ import networkx as nx
 
 NAMESPACE = "quantum-sched-test"
 QUANTUM_SCHEDULER_NAME = "quantum-scheduler"
-# Label every workload pod carries, and the annotation holding its simulated
-# traffic as JSON: {"<peer pod name>": <Mbps>, ...}.
 WORKLOAD_LABEL_KEY = "app.kubernetes.io/part-of"
 WORKLOAD_LABEL_VALUE = "cep-workload"
 TRAFFIC_ANNOTATION = "cep.quantum/traffic-mbps"
@@ -39,8 +37,6 @@ class TrafficEdge:
     mbps: int
 
 
-# A small web shop. Totals: CPU 220%, memory 210% of one node — needs all
-# 3 workers (does not fit on 2), with room left for the placement to matter.
 PODS: tuple[PodDemand, ...] = (
     PodDemand("frontend", cpu_percent=20, memory_percent=15),
     PodDemand("gateway", cpu_percent=25, memory_percent=15),

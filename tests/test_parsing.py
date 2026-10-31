@@ -19,7 +19,7 @@ GI = 1024**3
         ("1.5", 1500),
         ("1500m", 1500),
         ("0", 0),
-        ("100u", 1),  # sub-millicore amounts round up, as Kubernetes does
+        ("100u", 1),
         ("1500000n", 2),
         (" 250m ", 250),
     ],

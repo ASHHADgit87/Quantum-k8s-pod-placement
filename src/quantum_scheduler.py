@@ -1,12 +1,10 @@
 """Batched QAOA scheduler + Kubernetes Binding API."""
 import argparse
 import logging
+import math
 import sys
-from collections import defaultdict
 from kubernetes import client
 
-from qiskit_aer import AerSimulator
-from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_algorithms import QAOA
 from qiskit_algorithms.optimizers import COBYLA
 from qiskit.primitives import StatevectorSampler
@@ -27,10 +25,8 @@ def sort_pods_by_traffic():
     return [name_to_pod[name] for name in sorted_names]
 
 def setup_qaoa_optimizer():
-    """Configures QAOA with a transpiled Aer simulator Sampler."""
-    backend = AerSimulator()
+    """Configures QAOA with an Aer simulator Sampler."""
     sampler = StatevectorSampler()
-    
     qaoa = QAOA(sampler=sampler, optimizer=COBYLA(maxiter=50))
     return MinimumEigenOptimizer(qaoa)
 
@@ -44,8 +40,40 @@ def bind_pod_to_node(api: client.CoreV1Api, pod_name: str, node_name: str, names
         api.create_namespaced_pod_binding(name=pod_name, namespace=namespace, body=binding)
         logger.info("Bound pod %s to node %s", pod_name, node_name)
     except client.ApiException as e:
-        logger.error("Failed to bind %s to %s: %s", pod_name, node_name, e.reason)
+        logger.exception("Failed to bind %s to %s: %s", pod_name, node_name, e.reason)
         raise
+
+def _solve_batch(optimizer, qp, batch, available_nodes):
+    batch_names = {p.name for p in batch}
+    try:
+        result = optimizer.solve(qp)
+        if result.status.name == "SUCCESS":
+            assign = {}
+            for var_name, val in result.variables_dict.items():
+                if math.isclose(val, 1.0, abs_tol=1e-5):
+                    _, pod_name, node_name = var_name.split("_")
+                    if pod_name in batch_names:
+                        assign[pod_name] = node_name
+            # Ensure every pod in the batch was assigned a node
+            if batch_names.issubset(assign.keys()):
+                return assign, result.fval
+    except Exception as e:
+        logger.warning("QAOA failed (%s), falling back to classical greedy", e)
+    
+    return brute_force_optimum(batch, available_nodes, workload.TRAFFIC)
+
+def _update_budgets(available_nodes, batch, assign):
+    updated = list(available_nodes)
+    for pod in batch:
+        node_name = assign[pod.name]
+        for idx, n in enumerate(updated):
+            if n.name == node_name:
+                updated[idx] = cluster_metrics.NodeBudget(
+                    n.name, n.alias, n.schedulable, n.allocatable_cpu_m, n.allocatable_memory_bytes,
+                    n.used_cpu_m + int(4000 * pod.cpu_percent / 100), 
+                    n.used_memory_bytes + int(8589934592 * pod.memory_percent / 100)
+                )
+    return updated
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -68,7 +96,6 @@ def main(argv=None):
     
     available_nodes = [b for b in budgets if b.schedulable]
     sorted_pods = sort_pods_by_traffic()
-    
     batches = [sorted_pods[i:i + BATCH_SIZE] for i in range(0, len(sorted_pods), BATCH_SIZE)]
     optimizer = setup_qaoa_optimizer()
     
@@ -77,39 +104,12 @@ def main(argv=None):
     
     for b_idx, batch in enumerate(batches):
         logger.info("Solving batch %d/%d (%d pods)", b_idx + 1, len(batches), len(batch))
-        
         qp = build_qubo(batch, available_nodes, workload.TRAFFIC)
+        assign, cost = _solve_batch(optimizer, qp, batch, available_nodes)
         
-        try:
-            result = optimizer.solve(qp)
-            feasible = result.status.name == "SUCCESS"
-        except Exception as e:
-            logger.warning("QAOA failed (%s), falling back to classical greedy", e)
-            feasible = False
-            
-        if not feasible:
-            logger.info("Using classical brute-force fallback for batch %d", b_idx + 1)
-            assign, cost = brute_force_optimum(batch, available_nodes, workload.TRAFFIC)
-        else:
-            assign = {}
-            for var_name, val in result.variables_dict.items():
-                if val == 1.0:
-                    _, pod_name, node_name = var_name.split("_")
-                    assign[pod_name] = node_name
-            cost = result.fval
-            
         final_assignment.update(assign)
         total_cost += cost
-        
-        for pod in batch:
-            node_name = assign[pod.name]
-            for idx, n in enumerate(available_nodes):
-                if n.name == node_name:
-                    available_nodes[idx] = cluster_metrics.NodeBudget(
-                        n.name, n.alias, n.schedulable, n.allocatable_cpu_m, n.allocatable_memory_bytes,
-                        n.used_cpu_m + int(4000 * pod.cpu_percent / 100), 
-                        n.used_memory_bytes + int(8589934592 * pod.memory_percent / 100)
-                    )
+        available_nodes = _update_budgets(available_nodes, batch, assign)
     
     logger.info("Final placement achieved with objective value: %s", total_cost)
     

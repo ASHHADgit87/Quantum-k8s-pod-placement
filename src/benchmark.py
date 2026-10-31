@@ -11,7 +11,7 @@ from src.quantum_scheduler import sort_pods_by_traffic, setup_qaoa_optimizer, BA
 
 logger = logging.getLogger(__name__)
 RESULTS_DIR = Path("results")
-DATA_FILE = RESULTS_DIR / "benchmark_data.json"
+DATA_FILE = (RESULTS_DIR / "benchmark_data.json").resolve()
 
 def calculate_resource_imbalance(nodes):
     """Calculates percentage CPU/memory load variance across active nodes."""
@@ -22,6 +22,49 @@ def calculate_resource_imbalance(nodes):
     variance = sum((load - mean_load) ** 2 for load in cpu_usages) / len(cpu_usages)
     return round(variance * 100, 2)
 
+def _solve_quantum_batch(optimizer, batch, nodes):
+    try:
+        qp = build_qubo(batch, nodes, workload.TRAFFIC)
+        result = optimizer.solve(qp)
+        if result.status.name == "SUCCESS":
+            assign_batch = {}
+            for var_name, val in result.variables_dict.items():
+                if val > 0.5:
+                    _, p_name, n_name = var_name.split("_")
+                    assign_batch[p_name] = n_name
+            if len(assign_batch) == len(batch):
+                return assign_batch
+    except Exception:
+        pass
+    
+    assign_batch, _ = brute_force_optimum(batch, nodes, workload.TRAFFIC)
+    if assign_batch:
+        return assign_batch
+    
+    return {pod.name: nodes[idx % len(nodes)].name for idx, pod in enumerate(batch)}
+
+def _solve_default_batch(batch, nodes):
+    return {pod.name: nodes[idx % len(nodes)].name for idx, pod in enumerate(batch)}
+
+def _run_single_iteration(mode, optimizer, nodes):
+    sorted_pods = sort_pods_by_traffic()
+    batches = [sorted_pods[j:j + BATCH_SIZE] for j in range(0, len(sorted_pods), BATCH_SIZE)]
+    assignment = {}
+    
+    for batch in batches:
+        if mode == "quantum":
+            batch_assign = _solve_quantum_batch(optimizer, batch, nodes)
+        else:
+            batch_assign = _solve_default_batch(batch, nodes)
+        assignment.update(batch_assign)
+        
+    cross_node_traffic_mbps = sum(
+        edge.mbps for edge in workload.TRAFFIC 
+        if assignment.get(edge.source) != assignment.get(edge.target)
+    )
+    
+    return assignment, cross_node_traffic_mbps
+
 def simulate_scheduler_run(mode: str, iterations: int):
     """Executes benchmark iterations for either 'default' or 'quantum' mode."""
     results = []
@@ -29,50 +72,13 @@ def simulate_scheduler_run(mode: str, iterations: int):
     
     for i in range(iterations):
         start_time = time.perf_counter()
-        
         nodes = [
             cluster_metrics.NodeBudget("agent-0", "node-alpha", True, 4000, 8589934592, 0, 0),
             cluster_metrics.NodeBudget("agent-1", "node-beta", True, 4000, 8589934592, 0, 0),
             cluster_metrics.NodeBudget("agent-2", "node-gamma", True, 4000, 8589934592, 0, 0),
         ]
         
-        sorted_pods = sort_pods_by_traffic()
-        batches = [sorted_pods[j:j + BATCH_SIZE] for j in range(0, len(sorted_pods), BATCH_SIZE)]
-        
-        assignment = {}
-        cross_node_traffic_mbps = 0
-        
-        for batch in batches:
-            if mode == "quantum":
-                try:
-                    qp = build_qubo(batch, nodes, workload.TRAFFIC)
-                    result = optimizer.solve(qp)
-                    if result.status.name == "SUCCESS":
-                        assign_batch = {}
-                        for var_name, val in result.variables_dict.items():
-                            if val > 0.5:
-                                _, p_name, n_name = var_name.split("_")
-                                assign_batch[p_name] = n_name
-                        if len(assign_batch) == len(batch):
-                            assignment.update(assign_batch)
-                            continue
-                    raise ValueError("QAOA non-success or partial assignment")
-                except Exception:
-                    assign_batch, _ = brute_force_optimum(batch, nodes, workload.TRAFFIC)
-                    if assign_batch:
-                        assignment.update(assign_batch)
-                    else:
-                        for idx, pod in enumerate(batch):
-                            assignment[pod.name] = nodes[idx % len(nodes)].name
-            else:
-                for idx, pod in enumerate(batch):
-                    node_target = nodes[idx % len(nodes)].name
-                    assignment[pod.name] = node_target
-                    
-        for edge in workload.TRAFFIC:
-            if assignment.get(edge.source) != assignment.get(edge.target):
-                cross_node_traffic_mbps += edge.mbps
-                
+        assignment, traffic_mbps = _run_single_iteration(mode, optimizer, nodes)
         duration = time.perf_counter() - start_time
         imbalance = calculate_resource_imbalance(nodes)
         
@@ -81,7 +87,7 @@ def simulate_scheduler_run(mode: str, iterations: int):
             "mode": mode,
             "duration_sec": round(duration, 4),
             "resource_imbalance_pct": imbalance,
-            "cross_node_traffic_mbps": cross_node_traffic_mbps,
+            "cross_node_traffic_mbps": traffic_mbps,
             "assignment": assignment
         })
         
@@ -106,8 +112,13 @@ def main(argv=None):
         "quantum_scheduler": quantum_runs
     }
     
-    DATA_FILE.write_text(json.dumps(benchmark_payload, indent=2))
-    logger.info("Benchmark complete. Data written to %s", DATA_FILE)
+    # Safe path resolution preventing traversal
+    safe_data_file = (RESULTS_DIR / "benchmark_data.json").resolve()
+    if not safe_data_file.is_relative_to(RESULTS_DIR.resolve()):
+        raise ValueError("Invalid target path")
+        
+    safe_data_file.write_text(json.dumps(benchmark_payload, indent=2))
+    logger.info("Benchmark complete. Data written to %s", safe_data_file)
     return 0
 
 if __name__ == "__main__":

@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# scripts/create_issues.sh — idempotent labels (--force), NOT idempotent issues
-# (gh doesn't dedupe issues; check `gh issue list` before re-running this).
 set -euo pipefail
 REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
 echo "Creating labels and issues in ${REPO}"
 
-# ---------- Labels ----------------------------------------------------------
 gh label create infrastructure --color "0E8A16" --description "K3s/k3d/Docker/cluster setup"   --force
 gh label create quantum-core   --color "5319E7" --description "QUBO/QAOA/scheduler logic"       --force
 gh label create benchmarking   --color "FBCA04" --description "Benchmark + plotting"            --force
 gh label create documentation  --color "1D76DB" --description "README + repo housekeeping"      --force
 
-# ---------- Environment ------------------------------------------------------
 gh issue create \
   --title "[Infra] Docker + K3s + Python venv on Kali WSL2" \
   --label infrastructure --assignee "@me" \
@@ -53,7 +49,6 @@ Misbah — native Ubuntu dual boot
 BODY
 )"
 
-# ---------- Kubernetes cluster + workload -----------------------------------
 gh issue create \
   --title "[Infra] k3d 3-worker cluster, aliased node labels (scripts/create_cluster.sh)" \
   --label infrastructure \
@@ -121,7 +116,6 @@ network counters (rx/tx bytes) for the report's Comparative Analysis.
 BODY
 )"
 
-# ---------- Quantum core ------------------------------------------------------
 gh issue create \
   --title "[Quantum] QUBO formulation + builder (src/qubo_builder.py)" \
   --label quantum-core \
@@ -179,7 +173,6 @@ ansatz circuit must be transpiled to gates Aer understands before it's run.
 BODY
 )"
 
-# ---------- Benchmarking -------------------------------------------------------
 gh issue create \
   --title "[Benchmarking] Default vs quantum scheduler benchmark (src/benchmark.py)" \
   --label benchmarking \
@@ -248,7 +241,6 @@ whole orchestration is checked without needing a live cluster.
 BODY
 )"
 
-# ---------- Documentation / repo housekeeping ---------------------------------
 gh issue create \
   --title "[Docs] README, requirements.txt, branch protection" \
   --label documentation --assignee "@me" \

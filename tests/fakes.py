@@ -89,7 +89,5 @@ class FakeCoreApi:
         if name not in self._node_stats:
             raise ConnectionError(f"kubelet on {name} is not reachable")
         if _preload_content:
-            # What the real client does by default: a Python-repr string
-            # (single quotes) that is not valid JSON.
             return str(self._node_stats[name])
         return SimpleNamespace(data=json.dumps(self._node_stats[name]).encode())

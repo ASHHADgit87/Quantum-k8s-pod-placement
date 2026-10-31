@@ -158,7 +158,7 @@ def test_network_counters_come_from_the_kubelet_summary() -> None:
 def test_network_counters_skip_nodes_that_cannot_be_read() -> None:
     stats = {
         "agent-0": {"node": {"network": {"rxBytes": 1, "txBytes": 2}}},
-        "agent-2": {"node": {}},  # reachable, but reports no network section
+        "agent-2": {"node": {}},
     }
     api = FakeCoreApi(node_stats=stats)
 
@@ -255,8 +255,8 @@ def test_pod_request_uses_the_larger_of_containers_and_init_plus_overhead() -> N
 
     alpha = cluster_metrics.read_node_budgets(api)[0]
 
-    assert alpha.used_cpu_m == 1100  # init container (1000m) wins, plus overhead
-    assert alpha.used_memory_bytes == 110 * MI  # containers (100Mi) win, plus overhead
+    assert alpha.used_cpu_m == 1100
+    assert alpha.used_memory_bytes == 110 * MI
 
 
 def test_workload_pods_leave_out_terminating_and_finished_pods() -> None:

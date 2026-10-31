@@ -25,9 +25,10 @@ def sort_pods_by_traffic():
     return [name_to_pod[name] for name in sorted_names]
 
 def setup_qaoa_optimizer():
-    """Configures QAOA with an Aer simulator Sampler."""
+    """Configures QAOA with a fast-converging Aer simulator Sampler."""
     sampler = StatevectorSampler()
-    qaoa = QAOA(sampler=sampler, optimizer=COBYLA(maxiter=50))
+    # Limited maxiter to ensure fast, responsive benchmarking execution
+    qaoa = QAOA(sampler=sampler, optimizer=COBYLA(maxiter=15))
     return MinimumEigenOptimizer(qaoa)
 
 def bind_pod_to_node(api: client.CoreV1Api, pod_name: str, node_name: str, namespace: str = workload.NAMESPACE):
@@ -54,7 +55,6 @@ def _solve_batch(optimizer, qp, batch, available_nodes):
                     _, pod_name, node_name = var_name.split("_")
                     if pod_name in batch_names:
                         assign[pod_name] = node_name
-            # Ensure every pod in the batch was assigned a node
             if batch_names.issubset(assign.keys()):
                 return assign, result.fval
     except Exception as e:

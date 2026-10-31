@@ -42,7 +42,7 @@ MEBIBYTE = 1024**2
 
 MILLICORES_PER_CORE = 1000
 # The numeric part of a quantity: plain ASCII decimal, optional exponent.
-_NUMBER = re.compile(r"(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?", re.ASCII)
+_NUMBER = re.compile(r"(\d+(?:\.\d*)?|\.\d+)([eE][+-]?\d+)?", re.ASCII)
 # Suffix -> multiplier that turns the number into millicores.
 _CPU_SUFFIXES = {
     "n": Fraction(1, 1_000_000),

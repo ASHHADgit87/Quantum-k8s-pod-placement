@@ -131,6 +131,7 @@ def build_documents(budget: PerNodeBudget, scheduler_name: str | None) -> list[d
 
 def write_manifests(budget: PerNodeBudget, output_dir: Path) -> tuple[Path, Path]:
     """Write both manifest files; returns (default path, quantum path)."""
+    output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     targets = (
         (output_dir / DEFAULT_MANIFEST, None),

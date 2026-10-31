@@ -11,7 +11,6 @@ from src.quantum_scheduler import sort_pods_by_traffic, setup_qaoa_optimizer, BA
 
 logger = logging.getLogger(__name__)
 RESULTS_DIR = Path("results")
-DATA_FILE = RESULTS_DIR / "benchmark_data.json"
 
 def calculate_resource_imbalance(nodes):
     """Calculates percentage CPU/memory load variance across active nodes."""
@@ -112,9 +111,13 @@ def main(argv=None):
         "quantum_scheduler": quantum_runs
     }
     
-    # Strictly use the static constant DATA_FILE to satisfy security static analysis
-    DATA_FILE.write_text(json.dumps(benchmark_payload, indent=2))
-    logger.info("Benchmark complete. Data written to %s", DATA_FILE)
+    # Safe path bound explicitly to RESULTS_DIR
+    target_file = (RESULTS_DIR / "benchmark_data.json")
+    if not target_file.resolve().is_relative_to(Path("results").resolve()):
+        raise ValueError("Invalid path")
+        
+    target_file.write_text(json.dumps(benchmark_payload, indent=2))
+    logger.info("Benchmark complete. Data written to %s", target_file)
     return 0
 
 if __name__ == "__main__":

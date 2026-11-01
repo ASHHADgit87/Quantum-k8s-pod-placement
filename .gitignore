@@ -11,3 +11,6 @@ manifests/test-pods*.yaml
 .idea/
 .DS_Store
 Thumbs.db
+.coverage
+htmlcov/
+pytest_cache/

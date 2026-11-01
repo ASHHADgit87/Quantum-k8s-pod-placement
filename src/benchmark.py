@@ -6,8 +6,8 @@ import sys
 import time
 from pathlib import Path
 from src import cluster_metrics, workload
-from src.qubo_builder import build_qubo, brute_force_optimum
-from src.quantum_scheduler import sort_pods_by_traffic, setup_qaoa_optimizer, BATCH_SIZE
+from src.qubo_builder import brute_force_optimum
+from src.quantum_scheduler import sort_pods_by_traffic, setup_qaoa_optimizer, solve_batch, update_budgets, BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 RESULTS_DIR = Path("results")
@@ -55,33 +55,15 @@ def compute_exact_optimum(pods, nodes) -> float:
     return cost
 
 
-def _extract_assignment(result, batch):
-    assign_batch = {}
-    for var_name, val in result.variables_dict.items():
-        if val > 0.5:
-            _, p_name, n_name = var_name.split("_")
-            assign_batch[p_name] = n_name
-    return assign_batch if len(assign_batch) == len(batch) else None
-
-
 def _solve_quantum_batch(optimizer, batch, nodes, recorder=None):
     """Returns (assignment, used_fallback). Fallback is recorded, never hidden."""
     if recorder is not None:
         recorder.start_batch()
-    try:
-        qp = build_qubo(batch, nodes, workload.TRAFFIC)
-        result = optimizer.solve(qp)
-        if result.status.name == "SUCCESS":
-            assign_batch = _extract_assignment(result, batch)
-            if assign_batch is not None:
-                return assign_batch, False
-    except Exception as exc:
-        logger.warning("QAOA failed (%s), falling back to exact classical solve", exc)
-
-    assign_batch, _ = brute_force_optimum(batch, nodes, workload.TRAFFIC)
+    assign_batch, _, used_fallback = solve_batch(optimizer, batch, nodes)
     if assign_batch:
-        return assign_batch, True
-
+        return assign_batch, used_fallback
+    logger.error("Batch %s does not fit the remaining capacity; placing round-robin (over capacity)",
+                 [p.name for p in batch])
     return _solve_default_batch(batch, nodes), True
 
 
@@ -90,7 +72,12 @@ def _solve_default_batch(batch, nodes):
 
 
 def _run_single_iteration(mode, optimizer, nodes, recorder=None):
-    """Returns (assignment, cross-node traffic in Mbps, number of fallback batches)."""
+    """Returns (assignment, cross-node traffic in Mbps, fallback batches, final node budgets).
+
+    Node usage is carried forward between batches (a new list each time, the
+    input is never mutated) so later batches see what earlier ones consumed and
+    the resource-imbalance metric reflects the real placement.
+    """
     sorted_pods = sort_pods_by_traffic()
     batches = [sorted_pods[j:j + BATCH_SIZE] for j in range(0, len(sorted_pods), BATCH_SIZE)]
     assignment = {}
@@ -103,13 +90,14 @@ def _run_single_iteration(mode, optimizer, nodes, recorder=None):
         else:
             batch_assign = _solve_default_batch(batch, nodes)
         assignment.update(batch_assign)
+        nodes = update_budgets(nodes, batch, batch_assign)
 
     cross_node_traffic_mbps = sum(
         edge.mbps for edge in workload.TRAFFIC
         if assignment.get(edge.source) != assignment.get(edge.target)
     )
 
-    return assignment, cross_node_traffic_mbps, fallback_batches
+    return assignment, cross_node_traffic_mbps, fallback_batches, nodes
 
 
 def fresh_nodes():
@@ -134,7 +122,7 @@ def simulate_scheduler_run(mode: str, iterations: int):
         start_time = time.perf_counter()
         nodes = fresh_nodes()
 
-        assignment, traffic_mbps, fallback_batches = _run_single_iteration(mode, optimizer, nodes, recorder)
+        assignment, traffic_mbps, fallback_batches, nodes = _run_single_iteration(mode, optimizer, nodes, recorder)
         duration = time.perf_counter() - start_time
         imbalance = calculate_resource_imbalance(nodes)
 

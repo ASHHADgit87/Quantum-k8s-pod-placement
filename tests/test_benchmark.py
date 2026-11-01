@@ -107,7 +107,7 @@ def test_run_single_iteration_counts_fallbacks(monkeypatch):
         return benchmark._solve_default_batch(batch, nodes), next(calls)
     monkeypatch.setattr(benchmark, "_solve_quantum_batch", fake_solve)
 
-    assignment, traffic, fallbacks = benchmark._run_single_iteration("quantum", None, _fresh_nodes())
+    assignment, traffic, fallbacks, _ = benchmark._run_single_iteration("quantum", None, _fresh_nodes())
 
     assert len(assignment) == 10
     assert traffic >= 0
@@ -115,5 +115,34 @@ def test_run_single_iteration_counts_fallbacks(monkeypatch):
 
 
 def test_run_single_iteration_default_has_no_fallbacks():
-    _, _, fallbacks = benchmark._run_single_iteration("default", None, _fresh_nodes())
+    _, _, fallbacks, _ = benchmark._run_single_iteration("default", None, _fresh_nodes())
     assert fallbacks == 0
+
+
+def test_run_single_iteration_carries_node_usage_forward():
+    """Node budgets must accumulate across batches so imbalance is measurable."""
+    original = _fresh_nodes()
+    assignment, _, _, nodes = benchmark._run_single_iteration("default", None, original)
+
+    assert all(n.used_cpu_m == 0 for n in original), "input nodes must not be mutated"
+    expected_cpu = {n.name: 0 for n in original}
+    expected_mem = {n.name: 0 for n in original}
+    for pod in workload.PODS:
+        expected_cpu[assignment[pod.name]] += int(4000 * pod.cpu_percent / 100)
+        expected_mem[assignment[pod.name]] += int(8589934592 * pod.memory_percent / 100)
+    assert {n.name: n.used_cpu_m for n in nodes} == expected_cpu
+    assert {n.name: n.used_memory_bytes for n in nodes} == expected_mem
+    assert sum(n.used_cpu_m for n in nodes) > 0
+
+
+def test_benchmark_imbalance_reflects_placement(tmp_path, monkeypatch):
+    """Putting every pod on one node must show up as a non-zero imbalance."""
+    monkeypatch.setattr(benchmark, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(benchmark, "setup_qaoa_optimizer", lambda callback=None: None)
+    monkeypatch.setattr(benchmark, "_solve_quantum_batch",
+                        lambda optimizer, batch, nodes, recorder=None: ({p.name: nodes[0].name for p in batch}, False))
+
+    assert benchmark.main(["--iterations", "1"]) == 0
+    payload = json.loads((tmp_path / "benchmark_data.json").read_text())
+    assert payload["quantum_scheduler"][0]["resource_imbalance_pct"] > 0
+    assert payload["default_scheduler"][0]["resource_imbalance_pct"] >= 0

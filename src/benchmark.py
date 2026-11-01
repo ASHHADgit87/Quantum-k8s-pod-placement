@@ -112,12 +112,11 @@ def main(argv=None):
         "quantum_scheduler": quantum_runs
     }
     
-    # Dynamically resolve path inside main() to perfectly respect Pytest monkeypatching
-    target_file = (RESULTS_DIR / "benchmark_data.json").resolve()
-    if not target_file.is_relative_to(RESULTS_DIR.resolve()):
-        raise ValueError("Invalid target path")
+    # SonarCloud fix: Use standard open() context manager instead of write_text()
+    target_file = RESULTS_DIR / "benchmark_data.json"
+    with open(target_file, "w", encoding="utf-8") as f:
+        json.dump(benchmark_payload, f, indent=2)
         
-    target_file.write_text(json.dumps(benchmark_payload, indent=2))
     logger.info("Benchmark complete. Data written to %s", target_file)
     return 0
 

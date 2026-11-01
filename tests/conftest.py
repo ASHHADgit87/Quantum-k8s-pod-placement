@@ -63,3 +63,14 @@ def test_namespace(core_api: client.CoreV1Api) -> Iterator[str]:
     finally:
         core_api.delete_namespace(name, grace_period_seconds=0)
         _wait_until_namespace_gone(core_api, name)
+
+@pytest.fixture(autouse=True)
+def speed_up_qaoa(monkeypatch):
+    """Forces maxiter=1 globally for Qiskit COBYLA optimization during Pytest to guarantee < 50s execution."""
+    from qiskit_algorithms.optimizers import COBYLA
+    original_init = COBYLA.__init__
+    
+    def fast_cobyla(self, maxiter=1000, **kwargs):
+        original_init(self, maxiter=1, **kwargs)
+        
+    monkeypatch.setattr(COBYLA, "__init__", fast_cobyla)

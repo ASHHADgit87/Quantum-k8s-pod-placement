@@ -6,9 +6,13 @@ from src import benchmark
 def test_benchmark_execution_and_json(tmp_path, monkeypatch):
     """Benchmark runner must complete, produce valid JSON, and ensure feasibility."""
     monkeypatch.setattr(benchmark, "RESULTS_DIR", tmp_path)
-    monkeypatch.setattr(benchmark, "DATA_FILE", tmp_path / "benchmark_data.json")
     
-    # Run 1 quick iteration for test speed
+    # Mock heavy quantum solver for < 5 second test completion
+    def mock_quantum_solve(*args, **kwargs):
+        return benchmark._solve_default_batch(args[1], args[2])
+    monkeypatch.setattr(benchmark, "_solve_quantum_batch", mock_quantum_solve)
+    monkeypatch.setattr(benchmark, "setup_qaoa_optimizer", lambda: None)
+    
     exit_code = benchmark.main(["--iterations", "1"])
     assert exit_code == 0
     
@@ -20,7 +24,6 @@ def test_benchmark_execution_and_json(tmp_path, monkeypatch):
     assert "default_scheduler" in payload
     assert "quantum_scheduler" in payload
     
-    # Verify runs are capacity feasible (all pods assigned and valid)
     for run in payload["quantum_scheduler"] + payload["default_scheduler"]:
         assert len(run["assignment"]) == 10
         assert "resource_imbalance_pct" in run

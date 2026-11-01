@@ -88,7 +88,7 @@ While operating as a local script, the scheduling engine functions conceptually 
 | Resource imbalance | Calculates CPU and memory load variance across all active worker nodes |
 | Traffic calculation | Precise Mbps evaluation of cross-node vs same-node pod communication |
 | JSON reporting | Immutable metadata payload containing iteration duration and exact assignments |
-| Automated visualization | Generates Matplotlib convergence, latency, and balance charts |
+| Automated visualization | Headless Matplotlib box-plots for latency and balance, a per-batch QAOA convergence plot, and `summary.json` with mean/std per metric, the exact-optimum objective and the fallback-batch count |
 
 ### Quantum Simulation
 
@@ -117,6 +117,7 @@ While operating as a local script, the scheduling engine functions conceptually 
 | `python -m src.cluster_metrics` | Cluster | Live | Prints node budgets and network interface counters |
 | `python -m src.quantum_scheduler` | Scheduler | Live | Executes full QAOA optimization and binds pending pods |
 | `python -m src.benchmark` | Benchmarking | Simulated | Runs N iterations and exports `benchmark_data.json` |
+| `python -m src.plot_results` | Benchmarking | Offline | Turns `benchmark_data.json` into box-plots, a QAOA convergence plot and `summary.json` |
 | `python -m pytest -q` | CI/CD | Offline | Executes test suite with fast-patched quantum limits |
 
 ---
@@ -127,7 +128,7 @@ While operating as a local script, the scheduling engine functions conceptually 
 |---|---|
 | Optimization throughput | Batch processing limits hardware bottleneck (3 pods = 9 qubits per batch) |
 | Fallback limit | Brute-force solver handles $3^3$ state spaces instantly |
-| Test suite execution | 108 tests execute in < 45 seconds via global `maxiter` restriction |
+| Test suite execution | 147 tests (138 offline) execute in < 60 seconds via global `maxiter` restriction |
 | Cluster footprint | K3d footprint requires minimal host RAM, fully isolated via containerization |
 
 ---

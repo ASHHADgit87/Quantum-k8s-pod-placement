@@ -24,11 +24,16 @@ def sort_pods_by_traffic():
     name_to_pod = {pod.name: pod for pod in workload.PODS}
     return [name_to_pod[name] for name in sorted_names]
 
-def setup_qaoa_optimizer():
-    """Configures QAOA with a fast-converging Aer simulator Sampler."""
+def setup_qaoa_optimizer(callback=None):
+    """Configures QAOA with a fast-converging Aer simulator Sampler.
+
+    ``callback`` is forwarded to QAOA and receives
+    ``(eval_count, parameters, energy, metadata)`` after every optimizer step,
+    which is how the benchmark records convergence trajectories.
+    """
     sampler = StatevectorSampler()
     # Limited maxiter to ensure fast, responsive benchmarking execution
-    qaoa = QAOA(sampler=sampler, optimizer=COBYLA(maxiter=15))
+    qaoa = QAOA(sampler=sampler, optimizer=COBYLA(maxiter=15), callback=callback)
     return MinimumEigenOptimizer(qaoa)
 
 def bind_pod_to_node(api: client.CoreV1Api, pod_name: str, node_name: str, namespace: str = workload.NAMESPACE):

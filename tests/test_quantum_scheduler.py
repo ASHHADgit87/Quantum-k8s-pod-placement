@@ -30,3 +30,14 @@ def test_main_offline_dry_run(mock_bind, caplog):
     
     for pod_name in ["frontend", "gateway", "auth", "catalog", "cart", "orders", "payments", "database", "cache", "queue"]:
         assert f"'{pod_name}':" in placements_str
+
+
+def test_setup_qaoa_optimizer_forwards_callback():
+    """The benchmark relies on the callback reaching QAOA to record energies."""
+    def callback(eval_count, parameters, energy, metadata):
+        pass
+
+    optimizer = quantum_scheduler.setup_qaoa_optimizer(callback=callback)
+    assert optimizer.min_eigen_solver.callback is callback
+
+    assert quantum_scheduler.setup_qaoa_optimizer().min_eigen_solver.callback is None

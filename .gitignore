@@ -6,6 +6,7 @@ kubeconfig
 *.kubeconfig
 .kube/
 results/*.json
+results/*.png
 manifests/test-pods*.yaml
 .vscode/
 .idea/

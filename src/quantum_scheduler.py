@@ -11,7 +11,7 @@ from qiskit.primitives import StatevectorSampler
 
 from qiskit_optimization.algorithms import MinimumEigenOptimizer
 from src import cluster_metrics, workload
-from src.qubo_builder import build_qubo, brute_force_optimum
+from src.qubo_builder import build_qubo, brute_force_optimum, assignment_from_x
 
 logger = logging.getLogger(__name__)
 
@@ -49,25 +49,41 @@ def bind_pod_to_node(api: client.CoreV1Api, pod_name: str, node_name: str, names
         logger.exception("Failed to bind %s to %s: %s", pod_name, node_name, e.reason)
         raise
 
-def _solve_batch(optimizer, qp, batch, available_nodes):
-    batch_names = {p.name for p in batch}
-    try:
-        result = optimizer.solve(qp)
-        if result.status.name == "SUCCESS":
-            assign = {}
-            for var_name, val in result.variables_dict.items():
-                if math.isclose(val, 1.0, abs_tol=1e-5):
-                    _, pod_name, node_name = var_name.split("_")
-                    if pod_name in batch_names:
-                        assign[pod_name] = node_name
-            if batch_names.issubset(assign.keys()):
-                return assign, result.fval
-    except Exception as e:
-        logger.warning("QAOA failed (%s), falling back to classical greedy", e)
-    
-    return brute_force_optimum(batch, available_nodes, workload.TRAFFIC)
+def select_feasible_sample(result, full_qp, batch, available_nodes):
+    """Lowest-energy QAOA sample that satisfies the full model, or None.
 
-def _update_budgets(available_nodes, batch, assign):
+    QAOA samples the reduced (assignment-only) program; capacity is checked
+    here against ``full_qp`` so no slack qubits are needed.
+    """
+    for sample in sorted(result.samples, key=lambda s: (s.fval, -s.probability)):
+        if not full_qp.is_feasible(sample.x):
+            continue
+        assignment = assignment_from_x(batch, available_nodes, sample.x)
+        if assignment is not None:
+            return assignment, float(sample.fval)
+    return None
+
+
+def solve_batch(optimizer, batch, available_nodes):
+    """Returns (assignment, cost, used_fallback). A fallback is logged, never hidden."""
+    batch_names = [p.name for p in batch]
+    full_qp = build_qubo(batch, available_nodes, workload.TRAFFIC)
+    quantum_qp = build_qubo(batch, available_nodes, workload.TRAFFIC, with_capacity=False)
+    try:
+        result = optimizer.solve(quantum_qp)
+        chosen = select_feasible_sample(result, full_qp, batch, available_nodes)
+        if chosen is not None:
+            return chosen[0], chosen[1], False
+        logger.warning("No feasible QAOA sample for batch %s, falling back to exact classical solve", batch_names)
+    except Exception as e:
+        logger.warning("QAOA failed (%s), falling back to exact classical solve", e, exc_info=True)
+
+    assign, cost = brute_force_optimum(batch, available_nodes, workload.TRAFFIC)
+    return assign, cost, True
+
+
+def update_budgets(available_nodes, batch, assign):
+    """New node list with the batch's CPU/memory usage added; the input is not mutated."""
     updated = list(available_nodes)
     for pod in batch:
         node_name = assign[pod.name]
@@ -75,8 +91,8 @@ def _update_budgets(available_nodes, batch, assign):
             if n.name == node_name:
                 updated[idx] = cluster_metrics.NodeBudget(
                     n.name, n.alias, n.schedulable, n.allocatable_cpu_m, n.allocatable_memory_bytes,
-                    n.used_cpu_m + int(4000 * pod.cpu_percent / 100), 
-                    n.used_memory_bytes + int(8589934592 * pod.memory_percent / 100)
+                    n.used_cpu_m + int(n.allocatable_cpu_m * pod.cpu_percent / 100),
+                    n.used_memory_bytes + int(n.allocatable_memory_bytes * pod.memory_percent / 100)
                 )
     return updated
 
@@ -105,18 +121,24 @@ def main(argv=None):
     optimizer = setup_qaoa_optimizer()
     
     total_cost = 0
+    fallback_batches = 0
     final_assignment = {}
     
     for b_idx, batch in enumerate(batches):
         logger.info("Solving batch %d/%d (%d pods)", b_idx + 1, len(batches), len(batch))
-        qp = build_qubo(batch, available_nodes, workload.TRAFFIC)
-        assign, cost = _solve_batch(optimizer, qp, batch, available_nodes)
-        
+        assign, cost, used_fallback = solve_batch(optimizer, batch, available_nodes)
+        if assign is None:
+            logger.error("Batch %d has no feasible placement on the remaining capacity", b_idx + 1)
+            return 1
+        if used_fallback:
+            fallback_batches += 1
+
         final_assignment.update(assign)
         total_cost += cost
-        available_nodes = _update_budgets(available_nodes, batch, assign)
+        available_nodes = update_budgets(available_nodes, batch, assign)
     
-    logger.info("Final placement achieved with objective value: %s", total_cost)
+    logger.info("Final placement achieved with objective value: %s (%d of %d batches used the classical fallback)",
+                total_cost, fallback_batches, len(batches))
     
     if args.dry_run:
         logger.info("Dry-run complete. Placements: %s", final_assignment)

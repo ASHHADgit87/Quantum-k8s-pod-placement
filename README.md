@@ -64,7 +64,7 @@ While operating as a local script, the scheduling engine functions conceptually 
 
 | Capability | Detail |
 |---|---|
-| Quantum solver | QAOA implementation via Qiskit Aer SamplerV2 |
+| Quantum solver | QAOA (qiskit-algorithms, StatevectorSampler) on a 9-qubit per-batch program; the lowest-energy sample that fits node capacity is kept |
 | Fallback mechanism | Deterministic classical brute-force exact optimum for infeasible quantum samples |
 | Batch processing | Pods are sorted by traffic weight and processed in sub-batches to manage qubit limits |
 | Native K8s binding | Utilizes `V1Binding` to assign pods to nodes directly, bypassing default scheduling |
@@ -128,7 +128,7 @@ While operating as a local script, the scheduling engine functions conceptually 
 |---|---|
 | Optimization throughput | Batch processing limits hardware bottleneck (3 pods = 9 qubits per batch) |
 | Fallback limit | Brute-force solver handles $3^3$ state spaces instantly |
-| Test suite execution | 147 tests (138 offline) execute in < 60 seconds via global `maxiter` restriction |
+| Test suite execution | 164 tests (155 offline) execute in < 60 seconds via global `maxiter` restriction |
 | Cluster footprint | K3d footprint requires minimal host RAM, fully isolated via containerization |
 
 ---

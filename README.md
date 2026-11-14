@@ -148,8 +148,92 @@ While operating as a local script, the scheduling engine functions conceptually 
 
 # Live Demo
 
-Requires local execution via k3d cluster creation script:
-`./scripts/create_cluster.sh`
+Requires a local Docker install and the k3d cluster creation script. Run each command separately, in order, from the project root.
+
+### 1. Activate the environment
+```bash
+source venv/bin/activate
+```
+
+### 2. Check that Docker is running
+```bash
+docker ps
+```
+
+### 3. Create the cluster (1 server + 3 workers)
+```bash
+./scripts/create_cluster.sh
+```
+
+### 4. Verify all nodes are Ready
+```bash
+kubectl get nodes
+```
+
+### 5. Generate the workload manifests
+```bash
+python -m src.generate_manifests
+```
+
+### 6. List the generated manifests
+```bash
+ls manifests
+```
+
+### 7. Deploy the baseline workload (default kube-scheduler)
+```bash
+kubectl apply -f manifests/<baseline-manifest>.yaml
+```
+
+### 8. Show the baseline placement
+```bash
+kubectl get pods -A -o wide | grep -v kube-system
+```
+
+### 9. Deploy the quantum-scheduled workload (stays Pending)
+```bash
+kubectl apply -f manifests/<quantum-manifest>.yaml
+```
+
+### 10. Show the pods waiting for the custom scheduler
+```bash
+kubectl get pods -A -o wide | grep -v kube-system
+```
+
+### 11. Run the QAOA scheduler (binds the pending pods)
+```bash
+python -m src.quantum_scheduler
+```
+
+### 12. Show the quantum placement
+```bash
+kubectl get pods -A -o wide | grep -v kube-system
+```
+
+### 13. Run the benchmark against the default scheduler
+```bash
+python -m src.benchmark
+```
+
+### 14. Generate the plots and summary
+```bash
+python -m src.plot_results
+```
+
+### 15. Show the summary results
+```bash
+cat results/summary.json
+```
+
+### 16. Run the test suite
+```bash
+python -m pytest -q
+```
+
+### 17. Clean up
+```bash
+./scripts/cleanup.sh
+```
 
 ---
 

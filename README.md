@@ -148,31 +148,41 @@ While operating as a local script, the scheduling engine functions conceptually 
 
 # Live Demo
 
-Requires Docker running and the k3d cluster. Run each command separately, in order, from the project root in PowerShell.
+Requires Docker running. Open PowerShell in the project folder, then run each command separately, in order.
 
-### 1. Start the cluster
+### 1. Enter Kali (WSL)
 ```powershell
-bash scripts/create_cluster.sh
+wsl
 ```
 
-### 2. Generate the workload manifests
-```powershell
-python -m src.generate_manifests
+### 2. Activate the Python environment
+```bash
+source quantum_env/bin/activate
 ```
 
-### 3. Deploy the pods for the quantum scheduler (they stay Pending)
-```powershell
-kubectl apply -f manifests/<quantum-manifest>.yaml
+### 3. Start the cluster
+```bash
+./scripts/create_cluster.sh
 ```
 
-### 4. Run the QAOA scheduler (binds the pods to nodes)
-```powershell
-python -m src.quantum_scheduler
+### 4. Run the QAOA scheduler without waiting for a full run
+```bash
+python -m src.quantum_scheduler --dry-run
 ```
 
-### 5. Show where the pods landed
-```powershell
-kubectl get pods -o wide
+### 5. Run the benchmark against the default scheduler (1 iteration)
+```bash
+python -m src.benchmark --iterations 1
+```
+
+### 6. Generate the plots and summary
+```bash
+python -m src.plot_results
+```
+
+### 7. Open the results folder
+```bash
+explorer.exe results/
 ```
 
 ---
